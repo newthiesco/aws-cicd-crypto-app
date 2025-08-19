@@ -1,35 +1,36 @@
-
 version: 0.2
+
+env:
+  variables:
+    AWS_DEFAULT_REGION: "us-east-1"
+    REPOSITORY_URI: "970547342192.dkr.ecr.us-east-1.amazonaws.com/crypto-project"
 
 phases:
   pre_build:
     commands:
       - echo "Logging in to Amazon ECR..."
-      - aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 970547342192.dkr.ecr.us-east-1.amazonaws.com
-      - REPOSITORY_URI=970547342192.dkr.ecr.us-east-1.amazonaws.com/crypto-project
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $REPOSITORY_URI
+      - echo "Setting up environment variables..."
       - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
-      - IMAGE_TAG=$COMMIT_HASH
+      - IMAGE_TAG=${COMMIT_HASH:-latest}
 
   build:
     commands:
       - echo "Building the Docker image..."
       - docker build -t $REPOSITORY_URI:latest .
       - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
-      - docker images
-
+      - echo "Docker images built:"
+      - docker images | grep crypto-project
 
   post_build:
     commands:
-      - echo "Pushing the Docker image..."
-      - docker push 970547342192.dkr.ecr.us-east-1.amazonaws.com/crypto-project:latest
-      - docker push 970547342192.dkr.ecr.us-east-1.amazonaws.com/crypto-project:$IMAGE_TAG
+      - echo "Pushing the Docker images to ECR..."
+      - docker push $REPOSITORY_URI:latest
+      - docker push $REPOSITORY_URI:$IMAGE_TAG
 
-      - echo "Setting IMAGE_URI variable..."
-      - export IMAGE_URI="$REPOSITORY_URI:$IMAGE_TAG"
-
-      - echo "Creating JSON output file..."
-      - echo '{}' | jq --arg img "$IMAGE_URI" '.imageURI = $img' > imageDetail.json
-      - echo "Verifying JSON output before uploading..."
+      - echo "Creating imageDetail.json for downstream stages..."
+      - IMAGE_URI="$REPOSITORY_URI:$IMAGE_TAG"
+      - echo "{\"imageURI\":\"$IMAGE_URI\"}" > imageDetail.json
       - cat imageDetail.json
 
       - echo "Uploading imageDetail.json to S3..."
