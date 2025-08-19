@@ -9,14 +9,11 @@ env:
 phases:
   pre_build:
     commands:
-      - echo "Installing dependencies..."
-      - yum install -y jq
-
       - echo "Fetching imageDetail.json from S3..."
       - aws s3 cp s3://$S3_BUCKET/$BUILD_FOLDER/imageDetail.json .
 
       - echo "Extracting IMAGE_URI..."
-      - export IMAGE_URI=$(jq -r '.imageURI' imageDetail.json)
+      - IMAGE_URI=$(jq -r '.imageURI' imageDetail.json)
       - echo "Using Image URI: $IMAGE_URI"
 
       - echo "Logging into Amazon ECR..."
@@ -28,19 +25,20 @@ phases:
       - echo "Pulling the Docker image from ECR..."
       - docker pull $IMAGE_URI
 
-      - echo "Starting container from image with port mapping..."
-      - docker run -d -p 5000:5000 --name test_container $IMAGE_URI
+      - echo "Starting container from image on host network..."
+      - CONTAINER_ID=$(docker run -d --network host -p 5000:5000 $IMAGE_URI)
+      - echo "Container ID: $CONTAINER_ID"
 
       - echo "Waiting for the container to be ready..."
       - sleep 10
 
-      - echo "Running health check on localhost:5000..."
+      - echo "Running health check..."
       - |
         set +e
         curl -sSf http://localhost:5000/
         TEST_EXIT_CODE=$?
-        docker stop test_container
-        docker rm test_container
+        docker stop $CONTAINER_ID
+        docker rm $CONTAINER_ID
         exit $TEST_EXIT_CODE
 
   post_build:
